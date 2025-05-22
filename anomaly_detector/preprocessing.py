@@ -1,50 +1,35 @@
 import pandas as pd
-import matplotlib.pyplot as plt
+import yaml
 
 
-class DataCleaner:
-    def __init__(self, file_path):
-        self.df = pd.read_csv(file_path)
+class DataPreprocessor:
+    def __init__(self, config_file='config.yaml'):
+        with open(config_file, 'r') as f:
+            self.config = yaml.safe_load(f).get('preprocessing', {})
 
-    def clean(self):
-        self._remove_duplicates()
-        self._handle_missing()
-        self._convert_time()
-        return self._remove_obvious_anomalies()
+    def load_data(self, file_path=None):
+        """Загрузка сырых данных"""
+        path = file_path or self.config.get('input_file', 'sensor_data.csv')
+        df = pd.read_csv(path)
+        return df
 
-    def _remove_duplicates(self):
-        self.df = self.df.drop_duplicates()
+    def clean_data(self, df):
+        """Очистка данных"""
+        # Удаление дубликатов
+        df = df.drop_duplicates()
 
-    def _handle_missing(self):
-        self.df.fillna(self.df.median(), inplace=True)
+        # Удаление пропусков
+        df.dropna(inplace=True)
 
-    def _convert_time(self):
-        self.df['time'] = pd.to_datetime(self.df['time'])
+        # Удаление явных аномалий
+        bounds = self.config.get('bounds', {'lower': -15, 'upper': 15})
+        mask = (df['value'] >= bounds['lower']) & (df['value'] <= bounds['upper'])
+        cleaned_df = df[mask].copy()
 
-    def _remove_obvious_anomalies(self, column='value', bounds=(-20, 20)):
-        mask = (self.df[column] >= bounds[0]) & (self.df[column] <= bounds[1])
-        cleaned = self.df[mask].copy()
-        return cleaned, len(self.df) - len(cleaned)
+        return cleaned_df
 
-    def plot_comparison(self, cleaned_df):
-        fig, axs = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
-
-        # Исходные данные
-        axs[0].plot(self.df['time'], self.df['value'],
-                    label='Исходные данные', color='blue', linewidth=1)
-        axs[0].set_title('Исходные данные')
-        axs[0].set_ylabel('Значение датчика')
-        axs[0].grid(True)
-        axs[0].legend()
-
-        # Очищенные данные
-        axs[1].plot(cleaned_df['time'], cleaned_df['value'],
-                    label='Данные после очистки', color='green', linewidth=1)
-        axs[1].set_title('Данные после удаления аномалий')
-        axs[1].set_xlabel('Время')
-        axs[1].set_ylabel('Значение датчика')
-        axs[1].grid(True)
-        axs[1].legend()
-
-        plt.tight_layout()
-        return fig
+    def save_clean_data(self, df, file_path=None):
+        """Сохранение очищенных данных"""
+        path = file_path or self.config.get('output_file', 'cleaned_sensor_data.csv')
+        df.to_csv(path, index=False)
+        return path

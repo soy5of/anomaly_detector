@@ -1,0 +1,66 @@
+preprocessing:
+  input_file: "sensor_data.csv"
+  output_file: "cleaned_sensor_data.csv"
+  bounds:
+    lower: -20
+    upper: 20
+
+methods: ['iqr', 'iforest', 'lof']
+
+iforest:
+  contamination: 0.05
+  random_state: 42
+
+lof:
+  n_neighbors: 20
+  contamination: 0.05
+
+iqr:
+  column: 'value'
+  threshold: 1.5
+
+visualization:
+  dpi: 300
+  show_plots: true
+  save_results: true
+  results_output: "anomaly_results.png"
+  comparison_output: "data_comparison.png"
+  health_output: "health_history.png"
+
+  styles:
+    comparison_figsize: [12, 10]
+    results_figsize: [15, 10]
+    health_figsize: [12, 6]
+
+    raw_data:
+      color: "blue"
+      linewidth: 1
+    clean_data:
+      color: "green"
+      linewidth: 1
+    health_index:
+      color: "purple"
+      linewidth: 1.5
+    health_colors: ["purple", "blue", "green", "orange"]
+
+    critical_periods:
+      color: "red"
+      alpha: 0.1
+    threshold_line:
+      color: "gray"
+      linestyle: "--"
+      alpha: 0.5
+
+  markers:
+    anomaly_if:
+      color: "red"
+      marker: "o"
+      label: "Isolation Forest"
+    anomaly_iqr:
+      color: "green"
+      marker: "x"
+      label: "IQR"
+    anomaly_lof:
+      color: "blue"
+      marker: "^"
+      label: "LOF"
