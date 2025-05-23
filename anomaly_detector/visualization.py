@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import pandas as pd
-import numpy as np
 from matplotlib.patches import Rectangle
 from matplotlib.collections import PatchCollection
 from typing import Optional, Dict, List, Union
@@ -8,19 +7,71 @@ from pathlib import Path
 import yaml
 from .detection import AnomalyDetector
 
-
 class AnomalyVisualizer:
-    def __init__(self, config_file: Union[str, Path] = 'config.yaml'):
+    def __init__(self, config_file: Union[str, Path] = None):
         """Инициализация визуализатора с конфигурацией из YAML-файла
 
         Args:
-            config_file: Путь к YAML-файлу конфигурации
-        """
-        with open(config_file, 'r') as f:
-            self.config = yaml.safe_load(f).get('visualization', {})
+            config_file (Union[str, Path], optional): Путь к YAML-файлу конфигурации.
+            Если None, будет использован файл config.yaml из директории пакета.
 
-        # Настройки стилей из конфига
-        self.styles = self.config.get('styles', {})
+        Raises:
+            FileNotFoundError: Если конфигурационный файл не найден.
+            ValueError: Если файл содержит невалидный YAML или структуру данных.
+        """
+        # Определяем путь к конфигурационному файлу
+        if config_file is None:
+            package_dir = Path(__file__).parent
+            config_file = package_dir / "config.yaml"
+
+        try:
+            with open(config_file, 'r') as f:
+                config = yaml.safe_load(f) or {}  # На случай пустого файла
+                self.config = config.get('visualization', {})
+        except FileNotFoundError as e:
+            raise FileNotFoundError(
+                f"Конфигурационный файл не найден: {e}\n"
+                f"Ожидаемый путь: {config_file}\n"
+                "Проверьте наличие файла или укажите правильный путь."
+            ) from e
+        except yaml.YAMLError as e:
+            raise ValueError(f"Ошибка в YAML-файле конфигурации: {str(e)}") from e
+
+        # Установка значений по умолчанию для стилей
+        self.styles = self.config.get('styles', {
+            'comparison_figsize': [12, 10],
+            'results_figsize': [15, 10],
+            'health_figsize': [12, 6],
+            'raw_data': {'color': 'blue', 'linewidth': 1},
+            'clean_data': {'color': 'green', 'linewidth': 1},
+            'main_plot': {'color': 'b', 'alpha': 0.7, 'linewidth': 1},
+            'critical_periods': {'color': 'red', 'alpha': 0.1},
+            'threshold_line': {'color': 'gray', 'linestyle': '--', 'alpha': 0.5},
+            'health_index': {'color': 'purple', 'linewidth': 1.5},
+            'health_colors': ['purple', 'blue', 'green', 'orange'],
+            'grid': {'linestyle': '--', 'alpha': 0.6}
+        })
+
+        # Установка значений по умолчанию для конфигурации
+        self.config.setdefault('grid_spec', {'rows': 3, 'cols': 1, 'height_ratios': [3, 1, 0.5]})
+        self.config.setdefault('markers', {
+            'anomaly_if': {'color': 'red', 'marker': 'o', 'label': 'Isolation Forest'},
+            'anomaly_iqr': {'color': 'green', 'marker': 'x', 'label': 'IQR'},
+            'anomaly_lof': {'color': 'blue', 'marker': '^', 'label': 'LOF'}
+        })
+        self.config.setdefault('critical_periods', {
+            'method': 'combined',
+            'threshold': 0.5,
+            'consecutive': 10
+        })
+        self.config.setdefault('save_comparison', True)
+        self.config.setdefault('save_results', True)
+        self.config.setdefault('save_health', True)
+        self.config.setdefault('show_plots', True)
+        self.config.setdefault('dpi', 300)
+        self.config.setdefault('comparison_output', 'data_cleaning_comparison.png')
+        self.config.setdefault('results_output', 'anomaly_detection_results.png')
+        self.config.setdefault('health_output', 'health_index_history.png')
 
     def plot_data_comparison(
             self,
@@ -87,6 +138,7 @@ class AnomalyVisualizer:
         # Получаем настройки из конфига
         figsize = self.styles.get('results_figsize', [15, 10])
         grid_spec = self.config.get('grid_spec', {'rows': 3, 'cols': 1, 'height_ratios': [3, 1, 0.5]})
+        df['time'] = df.index
 
         plt.figure(figsize=figsize)
         gs = plt.GridSpec(
@@ -110,17 +162,11 @@ class AnomalyVisualizer:
 
         # Стили для графиков
         main_style = self.styles.get('main_plot', {'color': 'b', 'alpha': 0.7, 'linewidth': 1})
-        crit_style = self.styles.get('critical_periods', {'color': 'red', 'alpha': 0.1})
+        crit_style = self.styles.get('critical_periods', {'color': 'red', 'alpha': 0.5})
         threshold_style = self.styles.get('threshold_line', {'color': 'gray', 'linestyle': '--', 'alpha': 0.5})
 
         # Основной график с данными
         ax1.plot(df['time'], df['value'], label='Сигнал', **main_style)
-
-        # Разметка критических периодов
-        for start, end in critical_periods:
-            start_time = df.iloc[start]['time']
-            end_time = df.iloc[end]['time']
-            ax1.axvspan(start_time, end_time, **crit_style)
 
         # Добавление аномалий разных методов
         markers = self.config.get('markers', {
@@ -148,6 +194,8 @@ class AnomalyVisualizer:
 
             # Разметка критических периодов
             for start, end in critical_periods:
+                if start == end:
+                    end = min(end + 1, len(df) - 1)
                 start_time = df.iloc[start]['time']
                 end_time = df.iloc[end]['time']
                 ax2.axvspan(start_time, end_time, **crit_style)
@@ -156,7 +204,7 @@ class AnomalyVisualizer:
             ax2.axhline(y=crit_config.get('threshold', 0.5), **threshold_style)
 
         ax2.set_ylim(0, 1.05)
-        ax2.set_ylabel('Индекс исправности')
+        ax2.set_title('Индекс исправности', pad=20)
         ax2.grid(True, **self.styles.get('grid', {}))
         ax2.legend(loc='upper left')
 
@@ -179,6 +227,7 @@ class AnomalyVisualizer:
         if output_file or self.config.get('save_results', True):
             save_path = output_file or self.config.get('results_output', 'anomaly_detection_results.png')
             plt.savefig(save_path, dpi=self.config.get('dpi', 300), bbox_inches='tight')
+
 
         if show or self.config.get('show_plots', True):
             plt.show()

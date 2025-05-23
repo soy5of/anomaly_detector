@@ -1,7 +1,7 @@
 from .interfaces import AnomalyDetectionPipeline, PipelineConfig
 from .preprocessing import DataPreprocessor
 from .detection import AnomalyDetector
-from .vizualization import visualize_results, plot_data_comparison
+from .visualization import visualize_results, plot_data_comparison
 
 __all__ = [
     'AnomalyDetectionPipeline',

@@ -1,21 +1,40 @@
 import pandas as pd
-import numpy as np
 from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import LocalOutlierFactor
 import yaml
-from typing import Optional, Dict, List, Union
+from typing import Optional, Dict, List, Union, Tuple
 from pathlib import Path
 
 
 class AnomalyDetector:
-    def __init__(self, config_file: Union[str, Path] = 'config.yaml'):
+    def __init__(self, config_file: Union[str, Path] = None):
         """Инициализация детектора аномалий с конфигурацией из YAML-файла
 
         Args:
-            config_file: Путь к YAML-файлу конфигурации
+            config_file (Union[str, Path], optional): Путь к YAML-файлу конфигурации.
+                Если None, будет использован файл config.yaml из директории пакета.
         """
-        with open(config_file, 'r') as f:
-            self.config = yaml.safe_load(f)
+        # Определяем путь к конфигурационному файлу
+        if config_file is None:
+            # Получаем путь к директории текущего модуля
+            package_dir = Path(__file__).parent
+            config_file = package_dir / "config.yaml"
+
+        try:
+            with open(config_file, 'r') as f:
+                self.config = yaml.safe_load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Конфигурационный файл не найден по пути: {config_file}\n"
+                "Пожалуйста, укажите правильный путь к файлу конфигурации или "
+                "разместите файл config.yaml в директории пакета."
+            )
+        except yaml.YAMLError as e:
+            raise ValueError(f"Ошибка при чтении YAML-файла: {str(e)}")
+
+        # Проверка наличия обязательных секций в конфиге
+        if not isinstance(self.config, dict):
+            raise ValueError("Конфигурационный файл должен содержать словарь")
 
         # Инициализация доступных методов
         self.methods = {
@@ -94,30 +113,26 @@ class AnomalyDetector:
             threshold: Optional[float] = None,
             consecutive: Optional[int] = None
     ) -> List[tuple]:
-        """Выявление критических периодов с низким health index
+        # Убедимся, что индекс целочисленный
+        df = df.reset_index(drop=True)
 
-        Args:
-            df: DataFrame с данными
-            method: Используемый метод ('if', 'iqr', 'lof', 'combined')
-            threshold: Пороговое значение health index
-            consecutive: Минимальная продолжительность периода
-
-        Returns:
-            Список кортежей (start_index, end_index) критических периодов
-        """
+        # Получаем параметры из конфига
         crit_config = self.config.get('critical_periods', {})
         threshold = threshold or crit_config.get('threshold', 0.5)
         consecutive = consecutive or crit_config.get('consecutive', 10)
 
+        # Проверяем наличие необходимой колонки
         health_col = f'health_index_{method}'
         if health_col not in df.columns:
-            df = self._rolling_health_evaluation(df, window=consecutive)
+            raise ValueError(f"DataFrame должен содержать колонку '{health_col}'")
 
+        # Основная логика поиска периодов
         alerts = []
         count = 0
         start_idx = None
 
-        for i, value in enumerate(df[health_col]):
+        for i in range(len(df)):
+            value = df.at[i, health_col]
             if value < threshold:
                 if count == 0:
                     start_idx = i
