@@ -51,14 +51,18 @@ class AnomalyDetectionPipeline:
         method = health_cfg.get('method', 'combined')
         window = health_cfg.get('window', None)
 
+        # Всегда вычисляем и выводим глобальный health index
         if method == 'combined' and 'anomaly_combined' in result.columns:
-            # Если указано окно — считаем скользящее среднее, иначе — просто среднее
+            global_health = 1 - result['anomaly_combined'].mean()
+            print(f"\nГлобальный индекс исправности ({method.upper()}): {global_health:.2%}")
+
+            # Дополнительно вычисляем скользящее среднее, если указано окно
             if window is not None:
-                result['health_index_combined'] = 1 - result['anomaly_combined'].rolling(window=window,
-                                                                                         min_periods=1).mean()
+                result['health_index_combined'] = 1 - result['anomaly_combined'].rolling(
+                    window=window, min_periods=1).mean()
+                print(f"Используется скользящее окно: {window} точек")
             else:
-                health = 1 - result['anomaly_combined'].mean()
-                print(f"Индекс исправности ({method.upper()}): {health:.2%}")
+                result['health_index_combined'] = global_health
 
         # Визуализация
         self.visualizer = AnomalyVisualizer(self.config_path)
@@ -68,17 +72,23 @@ class AnomalyDetectionPipeline:
         result.reset_index(drop=True, inplace=True)
         self.visualizer.visualize_results(result, self.detector)
 
-        method = 'combined'
-        col_name = 'health_index_combined'
-
-        if col_name in result.columns:
+        # Анализ критических периодов
+        if 'health_index_combined' in result.columns:
             alerts = self.detector.get_critical_periods(result, method=method)
+
+            # Вычисляем процент критического состояния
+            critical_percentage = (result['health_index_combined'] < health_cfg.get('threshold', 0.5)).mean()
+            print(f"\nПроцент времени в критическом состоянии: {critical_percentage:.2%}")
+
             if alerts:
-                print(f"\nКритическое падение индекса ({method.upper()}):")
+                print(f"\nКритические периоды ({method.upper()}):")
                 for start, end in alerts:
-                    print(f"Период: {result.iloc[start]['time']} - {result.iloc[end]['time']}")
+                    duration = end - start + 1
+                    health_value = result.loc[start:end, 'health_index_combined'].mean()
+                    print(f"Период: {result.iloc[start]['time']} - {result.iloc[end]['time']} "
+                          f"(длительность: {duration} точек, средний индекс: {health_value:.2f})")
             else:
-                print(f"\nДля метода {method.upper()} критических падений не обнаружено")
+                print(f"\nДля метода {method.upper()} критических периодов не обнаружено")
         else:
             print("\nКолонка 'health_index_combined' отсутствует в DataFrame")
 
@@ -86,7 +96,9 @@ class AnomalyDetectionPipeline:
             "raw_data": raw_df,
             "clean_data": clean_df,
             "result": result,
-            "clean_data_path": clean_path
+            "clean_data_path": clean_path,
+            "global_health_index": global_health if 'global_health' in locals() else None,
+            "critical_percentage": critical_percentage if 'critical_percentage' in locals() else None
         }
 
     def plot_comparison(self, raw_df: pd.DataFrame, clean_df: pd.DataFrame):

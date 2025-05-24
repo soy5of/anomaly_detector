@@ -9,7 +9,7 @@ methods: ['iqr', 'iforest', 'lof']
 
 health_index:
   method: "combined"  # всегда комбинированный
-  window: None          # если None или не указано — среднее по всему DataFrame
+  window: 10          # если None или не указано — среднее по всему DataFrame
 
 iforest:
   contamination: 0.05

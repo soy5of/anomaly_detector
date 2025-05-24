@@ -62,4 +62,13 @@ class TestDataPreprocessor(unittest.TestCase):
         processor = DataPreprocessor()
         empty_df = pd.DataFrame(columns=["time", "value"])
 
-        # Для clean_data не должно быть исклю
+        # Для clean_data не должно быть исключения - просто вернет пустой DataFrame
+        cleaned_empty = processor.clean_data(empty_df)
+        self.assertTrue(cleaned_empty.empty)
+
+        # Проверяем сохранение пустых данных - должно вызывать ValueError
+        with self.assertRaises(ValueError):
+            processor.save_clean_data(pd.DataFrame())
+
+    if __name__ == "__main__":
+        unittest.main()

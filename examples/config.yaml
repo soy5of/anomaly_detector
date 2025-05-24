@@ -7,6 +7,10 @@ preprocessing:
 
 methods: ['iqr', 'iforest', 'lof']
 
+health_index:
+  method: "combined"  # всегда комбинированный
+  window: 10          # если None или не указано — среднее по всему DataFrame
+
 iforest:
   contamination: 0.05
   random_state: 42
@@ -42,7 +46,6 @@ visualization:
       color: "purple"
       linewidth: 1.5
     health_colors: ["purple", "blue", "green", "orange"]
-
     critical_periods:
       color: "red"
       alpha: 0.5
